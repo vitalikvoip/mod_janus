@@ -38,13 +38,21 @@
 
 // calling process must free the returned value
 static char *idToStr(const janus_id_t id) {
-  char *pResult = switch_mprintf("%" SWITCH_UINT64_T_FMT, id);
-  if (pResult == NULL) {
-    fprintf(stderr,"ABORT! Realloc failure at: %s:%d", __FILE__, __LINE__);
-    abort();
-  }
-  return pResult;
+	char *pResult = NULL;
+
+	if (INT == id.type)
+		pResult = switch_mprintf("%" SWITCH_UINT64_T_FMT, id.u.num);
+	else
+		pResult = switch_mprintf("%s", id.u.str);
+
+	if (pResult == NULL)
+	{
+		fprintf(stderr,"ABORT! Realloc failure at: %s:%d", __FILE__, __LINE__);
+		abort();
+	}
+	return pResult;
 }
+
 
 switch_status_t hashCreate(hash_t *pHash, switch_memory_pool_t *pPool) {
   switch_status_t status;

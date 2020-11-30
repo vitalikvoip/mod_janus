@@ -137,25 +137,33 @@ static message_t *decode(cJSON *pJsonResponse) {
 	switch_zmalloc(pMessage, sizeof(*pMessage));
 
 	pMessage->pJsonBody = cJSON_GetObjectItemCaseSensitive(pJsonResponse, "data");
-	if (pMessage->pJsonBody && !cJSON_IsObject(pMessage->pJsonBody)) {
+	if (pMessage->pJsonBody && !cJSON_IsObject(pMessage->pJsonBody))
+	{
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid type (data)\n");
 		return NULL;
-	} else if (!pMessage->pJsonBody) {
+	}
+	else if (!pMessage->pJsonBody)
+	{
 		pJsonRspPluginData = cJSON_GetObjectItemCaseSensitive(pJsonResponse, "plugindata");
 		if (pJsonRspPluginData) {
-			if (cJSON_IsObject(pJsonRspPluginData)) {
+			if (cJSON_IsObject(pJsonRspPluginData))
+			{
 				pJsonRspPlugin = cJSON_GetObjectItemCaseSensitive(pJsonRspPluginData, "plugin");
-			  if (!cJSON_IsString(pJsonRspPlugin) || strcmp(JANUS_PLUGIN, pJsonRspPlugin->valuestring)) {
+			  if (!cJSON_IsString(pJsonRspPlugin) || strcmp(JANUS_PLUGIN, pJsonRspPlugin->valuestring))
+			  {
 			    switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (plugindata.plugin)\n");
 					return NULL;
 			  }
 
 			  pMessage->pJsonBody = cJSON_GetObjectItemCaseSensitive(pJsonRspPluginData, "data");
-			  if (!cJSON_IsObject(pMessage->pJsonBody)) {
+			  if (!cJSON_IsObject(pMessage->pJsonBody))
+			  {
 			    switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid type (plugindata.data)\n");
 					return NULL;
 			  }
-			} else {
+			}
+			else
+			{
 				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid type (plugindata)\n");
 				return NULL;
 			}
@@ -169,46 +177,65 @@ static message_t *decode(cJSON *pJsonResponse) {
 	}
 
 	pJsonRspJanus = cJSON_GetObjectItemCaseSensitive(pJsonResponse, JANUS_STRING);
-	if (pJsonRspJanus) {
-		if (!cJSON_IsString(pJsonRspJanus)) {
+	if (pJsonRspJanus)
+	{
+		if (!cJSON_IsString(pJsonRspJanus))
+		{
 			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (janus)\n");
 			return NULL;
-		} else {
+		}
+		else
+		{
 			pMessage->pType = pJsonRspJanus->valuestring;
 			DEBUG(SWITCH_CHANNEL_LOG, "janus=%s\n", pMessage->pType);
 		}
 	}
 
 	pJsonRspTransaction = cJSON_GetObjectItemCaseSensitive(pJsonResponse, "transaction");
-	if (pJsonRspTransaction) {
-		if (!cJSON_IsString(pJsonRspTransaction)) {
+	if (pJsonRspTransaction)
+	{
+		if (!cJSON_IsString(pJsonRspTransaction))
+		{
 			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (transaction)\n");
 			return NULL;
-		} else {
+		}
+		else
+		{
 			pMessage->pTransactionId = pJsonRspTransaction->valuestring;
 			DEBUG(SWITCH_CHANNEL_LOG, "transaction=%s\n", pMessage->pTransactionId);
 		}
 	}
 
 	pJsonRspServerId = cJSON_GetObjectItemCaseSensitive(pJsonResponse, "session_id");
-	if (pJsonRspServerId) {
-		if (!cJSON_IsNumber(pJsonRspServerId)) {
+	if (pJsonRspServerId)
+	{
+		if (!cJSON_IsNumber(pJsonRspServerId))
+		{
 			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (session_id)\n");
 			return NULL;
-		} else {
-			pMessage->serverId = (janus_id_t) pJsonRspServerId->valuedouble;
+		}
+		else
+		{
+			pMessage->serverId.type = INT;
+			pMessage->serverId.u.num = (uint64_t) pJsonRspServerId->valuedouble;
 			DEBUG(SWITCH_CHANNEL_LOG, "serverId=%" SWITCH_UINT64_T_FMT "\n", pMessage->serverId);
 		}
 	}
 
 	pJsonRspSender = cJSON_GetObjectItemCaseSensitive(pJsonResponse, "sender");
-	if (pJsonRspSender) {
-		if (!cJSON_IsNumber(pJsonRspSender)) {
-			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (transaction)\n");
-			return NULL;
-		} else {
-			pMessage->senderId = (janus_id_t) pJsonRspSender->valuedouble;
+	if (pJsonRspSender)
+	{
+		if (cJSON_IsNumber(pJsonRspSender))
+		{
+			pMessage->senderId.type = INT;
+			pMessage->senderId.u.num = (uint64_t) pJsonRspSender->valuedouble;
 			DEBUG(SWITCH_CHANNEL_LOG, "sender=%" SWITCH_UINT64_T_FMT "\n", pMessage->senderId);
+		}
+		else if (cJSON_IsString(pJsonRspSender))
+		{
+			pMessage->senderId.type = STR;
+			strncpy(pMessage->senderId.u.str, pJsonRspSender->valuestring, sizeof(pMessage->senderId.u.str) - 1);
+			DEBUG(SWITCH_CHANNEL_LOG, "sender=%s\n", pMessage->senderId.u.str);
 		}
 	}
 
@@ -217,13 +244,14 @@ static message_t *decode(cJSON *pJsonResponse) {
 
 
 janus_id_t apiGetServerId(const char *pUrl, const char *pSecret) {
-  janus_id_t serverId = 0;
+  janus_id_t serverId;
 	message_t request, *pResponse = NULL;
-
   cJSON *pJsonRequest = NULL;
   cJSON *pJsonResponse = NULL;
 	cJSON *pJsonRspId;
   char *pTransactionId = generateTransactionId();
+
+	memset(&serverId,0,sizeof(serverId));
 
 	switch_assert(pUrl);
 
@@ -259,7 +287,9 @@ janus_id_t apiGetServerId(const char *pUrl, const char *pSecret) {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (id)\n");
     goto done;
   }
-  serverId = (janus_id_t) pJsonRspId->valuedouble;
+
+  serverId.type = INT;
+  serverId.u.num = (uint64_t) pJsonRspId->valuedouble;
 
   done:
   cJSON_Delete(pJsonRequest);
@@ -297,7 +327,17 @@ switch_status_t apiClaimServerId(const char *pUrl, const char *pSecret, janus_id
     goto done;
   }
 
-	if (snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT, pUrl, serverId) < 0) {
+  int rc = 0;
+  if (INT == serverId.type)
+  {
+  	rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT, pUrl, serverId.u.num);
+  }
+  else
+  {
+  	rc = snprintf(url, sizeof(url), "%s/%s", pUrl, serverId.u.str);
+  }
+
+	if (rc < 0) {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not generate URL\n");
 		result = SWITCH_STATUS_FALSE;
     goto done;
@@ -318,15 +358,20 @@ switch_status_t apiClaimServerId(const char *pUrl, const char *pSecret, janus_id
     goto done;
 	}
 
-	if (!strcmp(pResponse->pType, "success")) {
+	if (!strcmp(pResponse->pType, "success"))
+	{
 		DEBUG(SWITCH_CHANNEL_LOG, "Successful claim\n");
 		result = SWITCH_STATUS_SUCCESS;
 		goto done;
-	} else 	if (!strcmp(pResponse->pType, "error")) {
+	}
+	else if (!strcmp(pResponse->pType, "error"))
+	{
 		pJsonRspError = cJSON_GetObjectItemCaseSensitive(pJsonResponse, "error");
-		if (cJSON_IsObject(pJsonRspError)) {
+		if (cJSON_IsObject(pJsonRspError))
+		{
 			pJsonRspErrorCode = cJSON_GetObjectItemCaseSensitive(pJsonRspError, "code");
-			if (!cJSON_IsNumber(pJsonRspErrorCode)) {
+			if (!cJSON_IsNumber(pJsonRspErrorCode))
+			{
 				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "No error code (error.code)\n");
 				result = SWITCH_STATUS_FALSE;
 				goto done;
@@ -334,7 +379,8 @@ switch_status_t apiClaimServerId(const char *pUrl, const char *pSecret, janus_id
 			DEBUG(SWITCH_CHANNEL_LOG, "error.code=%d\n", pJsonRspErrorCode->valueint);
 
 			pJsonRspErrorReason = cJSON_GetObjectItemCaseSensitive(pJsonRspError, "reason");
-			if (!cJSON_IsString(pJsonRspErrorReason)) {
+			if (!cJSON_IsString(pJsonRspErrorReason))
+			{
 				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "No reason (error.reason)\n");
 				result = SWITCH_STATUS_FALSE;
 				goto done;
@@ -342,12 +388,16 @@ switch_status_t apiClaimServerId(const char *pUrl, const char *pSecret, janus_id
 			DEBUG(SWITCH_CHANNEL_LOG, "error.reason=%s\n", pJsonRspErrorReason->valuestring);
 			result = SWITCH_STATUS_NOT_INITALIZED;
 			goto done;
-		} else {
+		}
+		else
+		{
 			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "No error block\n");
 			result = SWITCH_STATUS_FALSE;
 			goto done;
 		}
-	} else {
+	}
+	else
+	{
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Unknown response=%s\n", pResponse->pType);
 		result = SWITCH_STATUS_FALSE;
 		goto done;
@@ -364,7 +414,7 @@ switch_status_t apiClaimServerId(const char *pUrl, const char *pSecret, janus_id
 
 janus_id_t apiGetSenderId(const char *pUrl, const char *pSecret, const janus_id_t serverId) {
 	message_t request, *pResponse = NULL;
-  janus_id_t senderId = 0;
+  janus_id_t senderId = JANUS_ID_INIT;
 
   cJSON *pJsonRequest = NULL;
   cJSON *pJsonResponse = NULL;
@@ -372,7 +422,7 @@ janus_id_t apiGetSenderId(const char *pUrl, const char *pSecret, const janus_id_
 	char *pTransactionId = generateTransactionId();
   char url[1024];
 
-	switch_assert(pUrl);
+ 	switch_assert(pUrl);
 
   // {"janus":"attach","plugin":"janus.plugin.audiobridge","opaque_id":"audiobridgetest-QsFKsttqnbOx","transaction":"ScRdYl6r0qoX"}
 
@@ -388,7 +438,14 @@ janus_id_t apiGetSenderId(const char *pUrl, const char *pSecret, const janus_id_
     goto done;
   }
 
-  if (snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT, pUrl, serverId) < 0) {
+	int rc = 0;
+
+	if (INT == serverId.type)
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT, pUrl, serverId.u.num);
+	else
+		rc = snprintf(url, sizeof(url), "%s/%s", pUrl, serverId.u.str);
+
+  if (rc < 0) {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not generate URL\n");
     goto done;
   }
@@ -397,23 +454,36 @@ janus_id_t apiGetSenderId(const char *pUrl, const char *pSecret, const janus_id_
   //	http_get("https://curl.haxx.se/libcurl/c/CURLOPT_HEADERFUNCTION.html", session);
   pJsonResponse = httpPost(url, 3000, pJsonRequest);
 
-	if (!(pResponse = decode(pJsonResponse))) {
+	if (!(pResponse = decode(pJsonResponse)))
+	{
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response\n");
     goto done;
   }
 
 	if (!pResponse->pType || strcmp("success", pResponse->pType) ||
-			!pResponse->pTransactionId || strcmp(pTransactionId, pResponse->pTransactionId)) {
+			!pResponse->pTransactionId || strcmp(pTransactionId, pResponse->pTransactionId))
+	{
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Value mismatch\n");
     goto done;
 	}
 
   pJsonRspId = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "id");
-  if (!cJSON_IsNumber(pJsonRspId)) {
+  if (cJSON_IsNumber(pJsonRspId))
+  {
+  	senderId.type = INT;
+  	senderId.u.num = (uint64_t) pJsonRspId->valuedouble;
+  }
+  else if (cJSON_IsString(pJsonRspId))
+  {
+  	senderId.type = STR;
+  	strncpy(senderId.u.str, pJsonRspId->valuestring, sizeof(senderId.u.str) - 1);
+  }
+  else
+  {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (id)\n");
     goto done;
   }
-  senderId = (janus_id_t) pJsonRspId->valuedouble;
+
 
   done:
   cJSON_Delete(pJsonRequest);
@@ -428,7 +498,7 @@ janus_id_t apiCreateRoom(const char *pUrl, const char *pSecret, const janus_id_t
 		const janus_id_t senderId, const janus_id_t roomId, const char *pDescription,
 		switch_bool_t record, const char *pRecordingFile, const char *pPin) {
 	message_t request, *pResponse = NULL;
-  janus_id_t result = 0;
+  janus_id_t result = JANUS_ID_INIT;
 
   cJSON *pJsonRequest = NULL;
   cJSON *pJsonResponse = NULL;
@@ -437,6 +507,8 @@ janus_id_t apiCreateRoom(const char *pUrl, const char *pSecret, const janus_id_t
 	cJSON *pJsonRspRoomId;
 	char *pTransactionId = generateTransactionId();
   char url[1024];
+
+  int rc = 0;
 
 	switch_assert(pUrl);
 
@@ -459,19 +531,28 @@ janus_id_t apiCreateRoom(const char *pUrl, const char *pSecret, const janus_id_t
     goto done;
   }
 
-  if (cJSON_AddNumberToObject(request.pJsonBody, "room", roomId) == NULL) {
+  if (INT == roomId.type && !cJSON_AddNumberToObject(request.pJsonBody, "room", roomId.u.num))
+  {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Cannot create string (body.room)\n");
     goto done;
   }
 
-  if (pDescription) {
+	if (STR == roomId.type && !cJSON_AddStringToObject(request.pJsonBody, "room", roomId.u.str))
+	{
+    switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Cannot create string (body.room)\n");
+    goto done;
+  }
+
+  if (pDescription)
+  {
     if (cJSON_AddStringToObject(request.pJsonBody, "description", pDescription) == NULL) {
       switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Cannot create string (body.description)\n");
       goto done;
     }
   }
 
-	if (pPin) {
+	if (pPin)
+	{
     if (cJSON_AddStringToObject(request.pJsonBody, "pin", pPin) == NULL) {
       switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Cannot create string (body.pin)\n");
       goto done;
@@ -483,19 +564,37 @@ janus_id_t apiCreateRoom(const char *pUrl, const char *pSecret, const janus_id_t
     goto done;
   }
 
-	if (pRecordingFile) {
+	if (pRecordingFile)
+	{
 		if (cJSON_AddStringToObject(request.pJsonBody, "record_file", pRecordingFile) == NULL) {
       switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Cannot create string (body.record_file)\n");
       goto done;
     }
   }
 
-	if (!(pJsonRequest = encode(request))) {
+	if (!(pJsonRequest = encode(request)))
+	{
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Cannot create request\n");
     goto done;
   }
 
-  if (snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId, senderId) < 0) {
+	rc = 0;
+	if (INT == senderId.type)
+	{
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId.u.num, senderId.u.num);
+	}
+	else if (STR == senderId.type)
+	{
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%s", pUrl, serverId.u.num, senderId.u.str);
+	}
+	else
+	{
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not generate URL\n");
+		goto done;
+	}
+
+  if (rc < 0)
+  {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not generate URL\n");
     goto done;
   }
@@ -504,47 +603,65 @@ janus_id_t apiCreateRoom(const char *pUrl, const char *pSecret, const janus_id_t
   //	http_get("https://curl.haxx.se/libcurl/c/CURLOPT_HEADERFUNCTION.html", session);
   pJsonResponse = httpPost(url, 3000, pJsonRequest);
 
-	if (!(pResponse = decode(pJsonResponse))) {
+	if (!(pResponse = decode(pJsonResponse)))
+	{
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response\n");
     goto done;
   }
 
 	if (!pResponse->pType || strcmp("success", pResponse->pType) ||
 			!pResponse->pTransactionId || strcmp(pTransactionId, pResponse->pTransactionId) ||
-			(pResponse->senderId != senderId) || !pResponse->pJsonBody) {
+			(!equal_id(&pResponse->senderId, &senderId)) || !pResponse->pJsonBody)
+	{
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Value mismatch\n");
     goto done;
 	}
 
   pJsonRspResult = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "audiobridge");
-  if (!cJSON_IsString(pJsonRspResult)) {
+  if (!cJSON_IsString(pJsonRspResult))
+  {
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "No response (plugindata.data.audiobridge)\n");
     goto done;
   }
 
-	if (!strcmp("event", pJsonRspResult->valuestring)) {
+	if (!strcmp("event", pJsonRspResult->valuestring))
+	{
 		pJsonRspErrorCode = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "error_code");
-		if (!cJSON_IsNumber(pJsonRspErrorCode)) {
+		if (!cJSON_IsNumber(pJsonRspErrorCode))
+		{
 			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "No error code (error_code)\n");
 			goto done;
 		}
 
-		if (pJsonRspErrorCode->valueint == 486) {
+		if (pJsonRspErrorCode->valueint == 486)
+		{
 			// its not a proper error if the room already exists
 			DEBUG(SWITCH_CHANNEL_LOG, "Room already exists\n");
 			result = roomId;
-		} else {
+		}
+		else
+		{
 			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (error_code) - error=%d\n", pJsonRspErrorCode->valueint);
 			goto done;
 		}
-	} else if (!strcmp("created", pJsonRspResult->valuestring)) {
+	}
+	else if (!strcmp("created", pJsonRspResult->valuestring))
+	{
 	  pJsonRspRoomId = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "room");
-	  if (!cJSON_IsNumber(pJsonRspRoomId) && (roomId != (janus_id_t) pJsonRspRoomId->valuedouble)) {
+
+	  if ( (cJSON_IsNumber(pJsonRspRoomId) && roomId.u.num != (uint64_t) pJsonRspRoomId->valuedouble )
+	  		 ||
+				 (cJSON_IsString(pJsonRspRoomId) && strcmp(roomId.u.str, pJsonRspRoomId->valuestring))
+			 )
+	  {
 	    switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (plugindata.data.room)\n");
 	    goto done;
 	  }
+
 	  result = roomId;
-	} else {
+	}
+	else
+	{
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (plugindata.data.audiobridge)\n");
 		goto done;
 	}
@@ -566,8 +683,10 @@ switch_status_t apiJoin(const char *pUrl, const char *pSecret,
 
   cJSON *pJsonRequest = NULL;
   cJSON *pJsonResponse = NULL;
-	char *pTransactionId = generateTransactionId();
+  char *pTransactionId = generateTransactionId();
   char url[1024];
+
+  int rc = 0;
 
 	switch_assert(pUrl);
 
@@ -592,7 +711,11 @@ switch_status_t apiJoin(const char *pUrl, const char *pSecret,
     goto done;
   }
 
-  if (cJSON_AddNumberToObject(request.pJsonBody, "room", roomId) == NULL) {
+  if ( (INT == roomId.type && cJSON_AddNumberToObject(request.pJsonBody, "room", roomId.u.num) == NULL)
+  		 ||
+			 (STR == roomId.type && cJSON_AddStringToObject(request.pJsonBody, "room", roomId.u.str) == NULL)
+		 )
+  {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Cannot create string (body.room)\n");
 		result = SWITCH_STATUS_FALSE;
     goto done;
@@ -628,7 +751,12 @@ switch_status_t apiJoin(const char *pUrl, const char *pSecret,
     goto done;
   }
 
-  if (snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId, senderId) < 0) {
+	if (INT == senderId.type)
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId.u.num, senderId.u.num);
+	else
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%s", pUrl, serverId.u.num, senderId.u.str);
+
+  if (rc < 0) {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not generate URL\n");
 		result = SWITCH_STATUS_FALSE;
     goto done;
@@ -670,6 +798,8 @@ switch_status_t apiConfigure(const char *pUrl, const char *pSecret,
 	cJSON *pJsonResponse = NULL;
 	char *pTransactionId = generateTransactionId();
   char url[1024];
+
+  int rc = 0;
 
 	switch_assert(pUrl);
 
@@ -746,7 +876,12 @@ switch_status_t apiConfigure(const char *pUrl, const char *pSecret,
     goto done;
   }
 
-  if (snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId, senderId) < 0) {
+	if (INT == senderId.type)
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId.u.num, senderId.u.num);
+	else
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%s", pUrl, serverId.u.num, senderId.u.str);
+
+  if (rc < 0) {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not generate URL\n");
 		result = SWITCH_STATUS_FALSE;
     goto done;
@@ -786,6 +921,8 @@ switch_status_t apiLeave(const char *pUrl, const char *pSecret, const janus_id_t
 	char *pTransactionId = generateTransactionId();
   char url[1024];
 
+  int rc = 0;
+
 	switch_assert(pUrl);
 
 	//{"janus":"message","body":{"request":"leave"},"transaction":"QPDt2vYOQmmd"}
@@ -815,7 +952,12 @@ switch_status_t apiLeave(const char *pUrl, const char *pSecret, const janus_id_t
     goto done;
   }
 
-  if (snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId, senderId) < 0) {
+	if (INT == senderId.type)
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId.u.num, senderId.u.num);
+	else
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%s", pUrl, serverId.u.num, senderId.u.str);
+
+  if (rc < 0) {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not generate URL\n");
 		result = SWITCH_STATUS_FALSE;
     goto done;
@@ -855,6 +997,8 @@ switch_status_t apiDetach(const char *pUrl, const char *pSecret, const janus_id_
 	char *pTransactionId = generateTransactionId();
   char url[1024];
 
+  int rc = 0;
+
 	switch_assert(pUrl);
 
 	(void) memset((void *) &request, 0, sizeof(request));
@@ -869,7 +1013,12 @@ switch_status_t apiDetach(const char *pUrl, const char *pSecret, const janus_id_
     goto done;
   }
 
-  if (snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId, senderId) < 0) {
+	if (INT == senderId.type)
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%" SWITCH_UINT64_T_FMT, pUrl, serverId.u.num, senderId.u.num);
+	else
+		rc = snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "/%s", pUrl, serverId.u.num, senderId.u.str);
+
+	if (rc < 0) {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not generate URL\n");
 		result = SWITCH_STATUS_FALSE;
     goto done;
@@ -917,9 +1066,11 @@ switch_status_t apiPoll(const char *pUrl, const char *pSecret, const janus_id_t 
 
   char url[1024];
 
+  int rc = 0;
+
 	switch_assert(pUrl);
 
-	if (snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "?maxev=%d", pUrl, serverId, MAX_POLL_EVENTS) < 0) {
+	if (snprintf(url, sizeof(url), "%s/%" SWITCH_UINT64_T_FMT "?maxev=%d", pUrl, serverId.u.num, MAX_POLL_EVENTS) < 0) {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Could not generate URL\n");
 		result = SWITCH_STATUS_FALSE;
     goto done;
@@ -962,9 +1113,12 @@ switch_status_t apiPoll(const char *pUrl, const char *pSecret, const janus_id_t 
 	    goto endloop;
 	  }
 
-		if (!strcmp(pResponse->pType, "keepalive")) {
+		if (!strcmp(pResponse->pType, "keepalive"))
+		{
 			DEBUG(SWITCH_CHANNEL_LOG, "Its a keepalive - do nothing\n");
-		} else if (!strcmp(pResponse->pType, "hangup")) {
+		}
+		else if (!strcmp(pResponse->pType, "hangup"))
+		{
 			DEBUG(SWITCH_CHANNEL_LOG, "Its an hangup\n");
 
 			pJsonRspReason = cJSON_GetObjectItemCaseSensitive(pEvent, "reason");
@@ -976,50 +1130,84 @@ switch_status_t apiPoll(const char *pUrl, const char *pSecret, const janus_id_t 
 			if ((*pHungupFunc)(pResponse->serverId, pResponse->senderId, pJsonRspReason->valuestring)) {
 			 switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Couldn't hangup\n");
 			}
-		} else if (!strcmp(pResponse->pType, "detached")) {
+		}
+		else if (!strcmp(pResponse->pType, "detached"))
+		{
 			// treat detached the same as hangup in case we missed the first message -
 			// this might mean we call the hungup function when the call has been terminated
 			if ((*pHungupFunc)(pResponse->serverId, pResponse->senderId, NULL)) {
 			 switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Couldn't detach\n");
 			}
-		} else if (!strcmp(pResponse->pType, "webrtcup")) {
+		}
+		else if (!strcmp(pResponse->pType, "webrtcup"))
+		{
 			DEBUG(SWITCH_CHANNEL_LOG, "WebRTC has been setup\n");
 
 			if ((*pAnsweredFunc)(pResponse->serverId, pResponse->senderId)) {
 			 switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Couldn't answer\n");
 			}
-		} else if (!strcmp(pResponse->pType, "media")) {
+		}
+		else if (!strcmp(pResponse->pType, "media"))
+		{
 			DEBUG(SWITCH_CHANNEL_LOG, "Media is flowing\n");
-		} else if (!strcmp(pResponse->pType, "event")) {
+		}
+		else if (!strcmp(pResponse->pType, "event"))
+		{
 			  pJsonRspType = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "audiobridge");
-			  if (!cJSON_IsString(pJsonRspType)) {
+			  if (!cJSON_IsString(pJsonRspType))
+			  {
 					switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "No response (plugindata.data.audiobridge)\n");
 					goto endloop;
 			  }
 
-				if (!strcmp("joined", pJsonRspType->valuestring)) {
+			  // joined
+				if (!strcmp("joined", pJsonRspType->valuestring))
+				{
 					janus_id_t roomId;
 					janus_id_t participantId;
 
 					pJsonRspRoomId = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "room");
-					if (!cJSON_IsNumber(pJsonRspRoomId)) {
+
+					if (cJSON_IsNumber(pJsonRspRoomId))
+					{
+						roomId.type = INT;
+						roomId.u.num = (uint64_t)pJsonRspRoomId->valuedouble;
+						DEBUG(SWITCH_CHANNEL_LOG, "roomId=%" SWITCH_UINT64_T_FMT "\n", roomId.u.num);
+					}
+					else if (cJSON_IsString(pJsonRspRoomId))
+					{
+						roomId.type = STR;
+						strncpy(roomId.u.str,pJsonRspRoomId->valuestring,sizeof(roomId.u.str) - 1);
+						DEBUG(SWITCH_CHANNEL_LOG, "roomId=%s\n", roomId.u.str);
+					}
+					else
+					{
 						switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (plugindata.data.room)\n");
 						goto endloop;
 					}
-					roomId = (janus_id_t) pJsonRspRoomId->valuedouble;
-					DEBUG(SWITCH_CHANNEL_LOG, "roomId=%" SWITCH_UINT64_T_FMT "\n", (janus_id_t) roomId);
 
 					pJsonRspParticipantId = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "id");
-					if (pJsonRspParticipantId) {
-						if (!cJSON_IsNumber(pJsonRspParticipantId)) {
+					if (pJsonRspParticipantId)
+					{
+						if (cJSON_IsNumber(pJsonRspParticipantId))
+						{
+							participantId.type = INT;
+							participantId.u.num = (uint64_t) pJsonRspParticipantId->valuedouble;
+							DEBUG(SWITCH_CHANNEL_LOG, "participantId=%" SWITCH_UINT64_T_FMT "\n", participantId.u.num);
+						}
+						else if (cJSON_IsString(pJsonRspParticipantId))
+						{
+							participantId.type = STR;
+							strncpy(participantId.u.str, pJsonRspParticipantId->valuestring, sizeof(participantId.u.str) - 1);
+							DEBUG(SWITCH_CHANNEL_LOG, "participantId=%s\n", participantId.u.str);
+						}
+						else
+						{
 							switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (plugindata.data.id)\n");
 							goto endloop;
 						}
-						participantId = (janus_id_t) pJsonRspParticipantId->valuedouble;
-						DEBUG(SWITCH_CHANNEL_LOG, "participantId=%" SWITCH_UINT64_T_FMT "\n", (janus_id_t) participantId);
 
-
-						// call the relevant handler in mod_janus
+  					// call the relevant handler in mod_janus
 
 						if ((*pJoinedFunc)(pResponse->serverId, pResponse->senderId, roomId, participantId)) {
 							switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Couldn't join\n");
@@ -1027,9 +1215,13 @@ switch_status_t apiPoll(const char *pUrl, const char *pSecret, const janus_id_t 
 					} else {
 						DEBUG(SWITCH_CHANNEL_LOG, "Someone else has joined\n");
 					}
-				} else if (!strcmp("event", pJsonRspType->valuestring)) {
+				}
+				// event
+				else if (!strcmp("event", pJsonRspType->valuestring))
+				{
 					pJsonRspType = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "result");
-					if (pJsonRspType) {
+					if (pJsonRspType)
+					{
 						if (!cJSON_IsString(pJsonRspType) || strcmp("ok", pJsonRspType->valuestring)) {
 					    switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (plugindata.data.result)\n");
 							goto endloop;
@@ -1050,24 +1242,43 @@ switch_status_t apiPoll(const char *pUrl, const char *pSecret, const janus_id_t 
 						if ((*pAcceptedFunc)(pResponse->serverId, pResponse->senderId, pJsonRspJsepSdp->valuestring)) {
 							switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Couldn't accept\n");
 						}
-					} else if ((pJsonRspType = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "leaving")) != NULL) {
-						if (!cJSON_IsNumber(pJsonRspType)) {
+					}
+					else if ((pJsonRspType = cJSON_GetObjectItemCaseSensitive(pResponse->pJsonBody, "leaving")) != NULL)
+					{
+						if (cJSON_IsNumber(pJsonRspType))
+						{
+							DEBUG(SWITCH_CHANNEL_LOG, "leaving=%" SWITCH_UINT64_T_FMT "\n", (uint64_t) pJsonRspType->valuedouble);
+						}
+						else if (cJSON_IsString(pJsonRspType))
+						{
+							DEBUG(SWITCH_CHANNEL_LOG, "leaving=%s\n", pJsonRspType->valuestring);
+						}
+						else
+						{
 							switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Invalid response (plugindata.data.leaving)\n");
 							goto endloop;
 						}
-						DEBUG(SWITCH_CHANNEL_LOG, "leaving=%" SWITCH_UINT64_T_FMT "\n", (janus_id_t) pJsonRspType->valuedouble);
-					} else {
+					}
+					else
+					{
 						switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Unknown audiobridge event\n");
 						goto endloop;
 					}
-				} else if (!strcmp("left", pJsonRspType->valuestring)) {
+				}
+				// left
+				else if (!strcmp("left", pJsonRspType->valuestring))
+				{
 					DEBUG(SWITCH_CHANNEL_LOG, "Caller has left the room\n");
-				} else {
+				}
+				else
+				{
 					switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Unknown result - audiobridge=%s\n", pJsonRspType->valuestring);
 				}
-		 } else {
+		}
+    else
+		{
 			 switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Unknown event - janus=%s\n", pResponse->pType);
-		 }
+		}
 
 		 endloop:
 		 switch_safe_free(pResponse);

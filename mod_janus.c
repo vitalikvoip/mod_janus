@@ -77,8 +77,8 @@ struct private_object {
 
 	janus_id_t serverId;
 	janus_id_t roomId;
-	char *pDisplay;
 	janus_id_t senderId;
+	char *pDisplay;
 };
 typedef struct private_object private_t;
 
@@ -262,9 +262,9 @@ switch_status_t hungup(janus_id_t serverId, janus_id_t senderId, const char *pRe
 	return SWITCH_STATUS_SUCCESS;
 }
 
-static void *SWITCH_THREAD_FUNC server_thread_run(switch_thread_t *pThread, void *pObj) {
+static void */*SWITCH_THREAD_FUNC*/ server_thread_run(switch_thread_t *pThread, void *pObj) {
 	server_t *pServer = (server_t *) pObj;
-	janus_id_t serverId = 0;
+	janus_id_t serverId = JANUS_ID_INIT;
 
 	switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Thread started - server=%s\n", pServer->name);
 
@@ -276,17 +276,23 @@ static void *SWITCH_THREAD_FUNC server_thread_run(switch_thread_t *pThread, void
 		// wait for a few seconds before re-connection
 		switch_yield(5000000);
 
-		if (serverId) {
+		if (UNKNOWN != serverId.type)
+		{
 			// the connection or Janus has restarted - try to re-use the same serverId
 			switch_status_t status =  apiClaimServerId(pServer->pUrl, pServer->pSecret, serverId);
-			if (status == SWITCH_STATUS_SOCKERR) {
+			if (status == SWITCH_STATUS_SOCKERR)
+			{
 				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Server=%s claim socket error - retry later\n", pServer->name);
-			} else if (status == SWITCH_STATUS_SUCCESS) {
+			}
+			else if (status == SWITCH_STATUS_SUCCESS)
+			{
 				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Server=%s claim success - serverId=%" SWITCH_UINT64_T_FMT "\n", pServer->name, serverId);
 				if (hashInsert(&globals.serverIdLookup, serverId, (void *) pServer) != SWITCH_STATUS_SUCCESS) {
 					switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Couldn't insert server into hash table\n");
 				}
-			} else {
+			}
+			else
+			{
 				// terminate all calls in progress on this server
 				switch_core_session_t *session;
 				private_t *tech_pvt;
@@ -305,16 +311,23 @@ static void *SWITCH_THREAD_FUNC server_thread_run(switch_thread_t *pThread, void
 					(void) hashDelete(&pServer->senderIdLookup, tech_pvt->senderId);
 				}
 				// reset serverId so we get a new one the next time around
-				serverId = 0;
+				serverId.type = UNKNOWN;
 			}
-		} else {
+		}
+		else
+		{
 			// first time
 			serverId = apiGetServerId(pServer->pUrl, pServer->pSecret);
-			if (!serverId) {
+			if (UNKNOWN == serverId.type)
+			{
 				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Error getting serverId\n");
-			} else if (hashInsert(&globals.serverIdLookup, serverId, (void *) pServer) != SWITCH_STATUS_SUCCESS) {
+			}
+			else if (hashInsert(&globals.serverIdLookup, serverId, (void *) pServer) != SWITCH_STATUS_SUCCESS)
+			{
 				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Couldn't insert server into hash table\n");
-			} else {
+			}
+			else
+			{
 				switch_mutex_lock(pServer->mutex);
 				pServer->started = switch_time_now();
 				pServer->serverId = serverId;
@@ -323,15 +336,20 @@ static void *SWITCH_THREAD_FUNC server_thread_run(switch_thread_t *pThread, void
 			}
 		}
 
-		while (!switch_test_flag(pServer, SFLAG_TERMINATING) && hashFind(&globals.serverIdLookup, serverId)) {
+		while (!switch_test_flag(pServer, SFLAG_TERMINATING) && hashFind(&globals.serverIdLookup, serverId))
+		{
 			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Poll started\n");
 
-			if (apiPoll(pServer->pUrl, pServer->pSecret, serverId, pServer->pAuthToken, joined, accepted, answered, hungup) != SWITCH_STATUS_SUCCESS) {
+			if (apiPoll(pServer->pUrl, pServer->pSecret, serverId, pServer->pAuthToken, joined, accepted, answered, hungup) != SWITCH_STATUS_SUCCESS)
+			{
 				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Poll failed\n");
-				if (hashDelete(&globals.serverIdLookup, serverId) != SWITCH_STATUS_SUCCESS) {
+				if (hashDelete(&globals.serverIdLookup, serverId) != SWITCH_STATUS_SUCCESS)
+				{
 					switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Couldn't remove server from hash table\n");
 				}
-			} else {
+			}
+			else
+			{
 				switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Poll completed\n");
 			}
 		}
@@ -439,24 +457,31 @@ static switch_status_t channel_on_init(switch_core_session_t *session)
 	}
 
 	tech_pvt->senderId = apiGetSenderId(pServer->pUrl, pServer->pSecret, tech_pvt->serverId);
-	if (!tech_pvt->senderId) {
+	if (UNKNOWN == tech_pvt->senderId.type) {
 		switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Error getting senderId\n");
 		switch_channel_hangup(channel, SWITCH_CAUSE_INCOMPATIBLE_DESTINATION);
 		return SWITCH_STATUS_FALSE;
 	}
 
 	if (hashInsert(&pServer->senderIdLookup, tech_pvt->senderId, (void *) session) != SWITCH_STATUS_SUCCESS) {
-		switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Failed to insert senderId=%" SWITCH_UINT64_T_FMT " in hash\n", tech_pvt->senderId);
+		if (INT == tech_pvt->senderId.type)
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Failed to insert senderId=%" SWITCH_UINT64_T_FMT " in hash\n", tech_pvt->senderId.u.num);
+		else
+			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Failed to insert senderId=%s in hash\n", tech_pvt->senderId.u.str);
+
 		switch_channel_hangup(channel, SWITCH_CAUSE_INCOMPATIBLE_DESTINATION);
 		return SWITCH_STATUS_FALSE;
 	}
 
 	if (switch_channel_var_false(channel, "janus-use-existing-room")) {
-		if (!apiCreateRoom(pServer->pUrl, pServer->pSecret, tech_pvt->serverId, tech_pvt->senderId, tech_pvt->roomId,
+		janus_id_t tmp = apiCreateRoom(pServer->pUrl, pServer->pSecret, tech_pvt->serverId, tech_pvt->senderId, tech_pvt->roomId,
 						switch_channel_get_variable(channel, "janus-room-description"),
 						switch_channel_var_true(channel, "janus-room-record"),
 						switch_channel_get_variable(channel, "janus-room-record-file"),
-						switch_channel_get_variable(channel, "janus-room-pin"))) {
+						switch_channel_get_variable(channel, "janus-room-pin"));
+
+		if (UNKNOWN == tmp.type)
+		{
 			switch_log_printf(SWITCH_CHANNEL_SESSION_LOG(session), SWITCH_LOG_ERROR, "Failed to create room\n");
 			switch_channel_hangup(channel, SWITCH_CAUSE_INCOMPATIBLE_DESTINATION);
 			return SWITCH_STATUS_FALSE;
@@ -585,7 +610,7 @@ static switch_status_t channel_on_hangup(switch_core_session_t *session)
 	DEBUG(SWITCH_CHANNEL_SESSION_LOG(session), "%s CHANNEL HANGUP\n", switch_channel_get_name(channel));
 
 	if (!(pServer = (server_t *) hashFind(&globals.serverIdLookup, tech_pvt->serverId))) {
-		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "No server for serverId=%" SWITCH_UINT64_T_FMT "\n", tech_pvt->serverId);
+		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "No server for serverId=%" SWITCH_UINT64_T_FMT "\n", tech_pvt->serverId.u.num);
 		// we can get here if the calls are being terminated because the server has failed
 		return SWITCH_STATUS_NOTFOUND;
 	}
@@ -916,7 +941,17 @@ static switch_call_cause_t channel_outgoing_channel(switch_core_session_t *sessi
 	*pNext ++ = '\0';
 
 	tech_pvt->pDisplay = switch_core_session_strdup(*new_session, pCurr);
-	tech_pvt->roomId = strtoull(pNext, NULL, 10);
+
+	if (pServer->string_ids)
+	{
+		tech_pvt->roomId.type = STR;
+		strncpy(tech_pvt->roomId.u.str,pNext,sizeof(tech_pvt->roomId.u.str) - 1);
+	}
+	else
+	{
+		tech_pvt->roomId.type = INT;
+		tech_pvt->roomId.u.num = strtoull(pNext, NULL, 10);
+	}
 
 	caller_profile = switch_caller_profile_clone(*new_session, outbound_profile);
 	switch_channel_set_caller_profile(channel, caller_profile);

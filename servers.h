@@ -70,6 +70,7 @@ typedef struct {
   // above are only modified during initialisation and so we
   // not mutexed
   janus_id_t serverId;
+  switch_bool_t string_ids;
 	switch_time_t started;
   unsigned int totalCalls;
   unsigned int callsInProgress;

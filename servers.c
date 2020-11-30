@@ -73,32 +73,46 @@ switch_status_t serversAdd(switch_xml_t xmlint) {
   switch_mutex_init(&pServer->mutex, SWITCH_MUTEX_NESTED, globals.pModulePool);
 	switch_mutex_init(&pServer->flag_mutex, SWITCH_MUTEX_NESTED, globals.pModulePool);
 
-  pServer->serverId = 0;
-  pServer->totalCalls = 0;
-  pServer->callsInProgress = 0;
-  pServer->pThread = NULL;
+  memset(&pServer, 0, sizeof(*pServer));
 
-	// set default values
-	pServer->name = switch_core_strdup(globals.pModulePool, pName);
+  // set default values
+  pServer->name = switch_core_strdup(globals.pModulePool, pName);
   pServer->codec_string = "opus";
   pServer->local_network = "localnet.auto";
 
-	for (param = switch_xml_child(xmlint, "param"); param; param = param->next) {
+	for (param = switch_xml_child(xmlint, "param"); param; param = param->next)
+	{
 		char *pVarStr = (char *) switch_xml_attr_soft(param, "name");
 		char *pValStr = (char *) switch_xml_attr_soft(param, "value");
 		DEBUG(SWITCH_CHANNEL_LOG, "Server=%s  %s->%s\n", pName, pVarStr, pValStr);
 
-		if (!strcmp(pVarStr, "url") && !zstr(pVarStr)) {
+		if (!strcmp(pVarStr, "url") && !zstr(pVarStr))
+		{
 			pServer->pUrl = switch_core_strdup(globals.pModulePool, pValStr);
-		} else if (!strcmp(pVarStr, "secret") && !zstr(pValStr)) {
+		}
+		else if (!strcmp(pVarStr, "secret") && !zstr(pValStr))
+		{
 			pServer->pSecret = switch_core_strdup(globals.pModulePool, pValStr);
-		} else if (!strcmp(pVarStr, "auth-token") && !zstr(pValStr)) {
+		}
+		else if (!strcmp(pVarStr, "string-ids") && !zstr(pValStr))
+		{
+			if (switch_true(pValStr))
+			{
+				pServer->string_ids = SWITCH_TRUE;
+			}
+		}
+		else if (!strcmp(pVarStr, "auth-token") && !zstr(pValStr))
+		{
 			pServer->pAuthToken = switch_core_strdup(globals.pModulePool, pValStr);
-		} else if (!strcmp(pVarStr, "local-network-acl") && !zstr(pValStr)) {
+		}
+		else if (!strcmp(pVarStr, "local-network-acl") && !zstr(pValStr))
+		{
       if (strcasecmp(pValStr, "none")) {
 	      pServer->local_network = switch_core_strdup(globals.pModulePool, pValStr);
       }
-		} else if (!strcmp(pVarStr, "ext-rtp-ip") && !zstr(pValStr)) {
+		}
+		else if (!strcmp(pVarStr, "ext-rtp-ip") && !zstr(pValStr))
+		{
       char *ip = globals.guess_ip;
 
       if (!strcmp(pValStr, "0.0.0.0")) {
@@ -118,7 +132,9 @@ switch_status_t serversAdd(switch_xml_t xmlint) {
           pServer->extrtpip = switch_core_strdup(globals.pModulePool, ip);
         }
       }
-		} else if (!strcmp(pVarStr, "rtp-ip")) {
+		}
+		else if (!strcmp(pVarStr, "rtp-ip"))
+		{
       char *ip = globals.guess_ip;
       char buf[64];
 
@@ -147,7 +163,9 @@ switch_status_t serversAdd(switch_xml_t xmlint) {
       } else {
         pServer->rtpip = switch_core_strdup(globals.pModulePool, ip);
       }
-    } else if (!strcasecmp(pVarStr, "apply-candidate-acl") && !zstr(pValStr)) {
+    }
+		else if (!strcasecmp(pVarStr, "apply-candidate-acl") && !zstr(pValStr))
+		{
       if (!strcasecmp(pValStr, "none")) {
         pServer->cand_acl_count = 0;
       } else if (pServer->cand_acl_count < SWITCH_MAX_CAND_ACL) {
@@ -155,17 +173,23 @@ switch_status_t serversAdd(switch_xml_t xmlint) {
       } else {
         switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Max acl records of %d reached\n", SWITCH_MAX_CAND_ACL);
       }
-    } else if (!strcasecmp(pVarStr, "codec-string") && !zstr(pValStr)) {
+    }
+		else if (!strcasecmp(pVarStr, "codec-string") && !zstr(pValStr))
+    {
       pServer->codec_string = switch_core_strdup(globals.pModulePool, pValStr);
-		} else if (!strcmp(pVarStr, "enabled") && !zstr(pValStr)) {
+		}
+		else if (!strcmp(pVarStr, "enabled") && !zstr(pValStr))
+		{
 			// set the flag to the opposite state so that we will do the right thine
-      if (switch_true(pValStr)) {
+      if (switch_true(pValStr))
+      {
         switch_set_flag(pServer, SFLAG_ENABLED);
       }
 		}
 	}
 
-	if (!pServer->pUrl) {
+	if (!pServer->pUrl)
+	{
 		switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_ERROR, "Server=%s  Mandatory parameter not specified\n", pName);
 		return SWITCH_STATUS_FALSE;
 	}
@@ -187,7 +211,7 @@ switch_status_t serversSummary(switch_stream_handle_t *pStream) {
     switch_mutex_lock(pServer->mutex);
     (void) snprintf(text, sizeof(text), "%s|%s|%u|%u|%" SWITCH_INT64_T_FMT "|%" SWITCH_UINT64_T_FMT "\n", pServer->name,
         switch_test_flag(pServer, SFLAG_ENABLED) ? "true" : "false", pServer->totalCalls,
-        pServer->callsInProgress, pServer->started, pServer->serverId);
+        pServer->callsInProgress, pServer->started, pServer->serverId.u.num);
     switch_mutex_unlock(pServer->mutex);
 
     pStream->write_function(pStream, text);

@@ -35,7 +35,50 @@
 
 #include  "switch.h"
 
-typedef uint64_t janus_id_t;
+typedef enum id_type { UNKNOWN, INT, STR } id_type_t;
+typedef struct {
+	id_type_t type;
+	union {
+		uint64_t num;
+		char     str[128];
+	} u;
+} janus_id_t;
+
+#define JANUS_ID_INIT {.type = UNKNOWN, .u = 0}
+
+static int equal_id(const janus_id_t *id1, const janus_id_t *id2)
+{
+	int rc = 0;
+
+	do {
+		if (!id1 || !id2)
+			break;
+
+		if (id1->type != id2->type)
+			break;
+
+		if (INT == id1->type)
+		{
+			if (id1->u.num == id2->u.num)
+				rc++;
+
+			break;
+		}
+		else if (STR == id1->type)
+		{
+			if (strlen(id1->u.str) == strlen(id2->u.str))
+			{
+				if (!strcmp(id1->u.str,id2->u.str))
+					rc++;
+			}
+
+			break;
+		}
+
+	} while(0);
+
+	return rc;
+}
 
 #include  "hash.h"
 
