@@ -70,10 +70,10 @@ switch_status_t serversAdd(switch_xml_t xmlint) {
 
 	pServer = switch_core_alloc(globals.pModulePool, sizeof(*pServer));
 
+	memset(pServer, 0, sizeof(*pServer));
+
   switch_mutex_init(&pServer->mutex, SWITCH_MUTEX_NESTED, globals.pModulePool);
 	switch_mutex_init(&pServer->flag_mutex, SWITCH_MUTEX_NESTED, globals.pModulePool);
-
-  memset(&pServer, 0, sizeof(*pServer));
 
   // set default values
   pServer->name = switch_core_strdup(globals.pModulePool, pName);
