@@ -677,7 +677,7 @@ janus_id_t apiCreateRoom(const char *pUrl, const char *pSecret, const janus_id_t
 
 switch_status_t apiJoin(const char *pUrl, const char *pSecret,
 		const janus_id_t serverId, const janus_id_t senderId, const janus_id_t roomId,
-		const char *pDisplay, const char *pPin, const char *pToken) {
+		const char *pDisplay, const char *pPin, const char *pToken, const char *id) {
 	message_t request, *pResponse = NULL;
   switch_status_t result = SWITCH_STATUS_SUCCESS;
 
@@ -691,6 +691,9 @@ switch_status_t apiJoin(const char *pUrl, const char *pSecret,
 	switch_assert(pUrl);
 
   //"{\"janus\":\"message\",\"transaction\":\"%s\",\"apisecret\":\"%s\",\"body\":{\"request\":\"join\",\"room\":%lu,\"display\":\"%s\"}}",
+
+	 switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_INFO, "Joining the room pUrl {%s} pSecret {%s} pDisplay {%s} pPin {%s} pToken {%s} id {%s}\n",
+			 pUrl,pSecret,pDisplay,pPin,pToken, id);
 
 	(void) memset((void *) &request, 0, sizeof(request));
 	request.pType = "message";
@@ -744,6 +747,14 @@ switch_status_t apiJoin(const char *pUrl, const char *pSecret,
       goto done;
     }
   }
+
+	if (id) {
+		if (cJSON_AddStringToObject(request.pJsonBody, "id", id) == NULL) {
+			switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Cannot create string (body.id)\n");
+			result = SWITCH_STATUS_FALSE;
+			goto done;
+		}
+	}
 
 	if (!(pJsonRequest = encode(request))) {
     switch_log_printf(SWITCH_CHANNEL_LOG, SWITCH_LOG_WARNING, "Cannot create request\n");
